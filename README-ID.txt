@@ -25,18 +25,22 @@ Paket ini mempertahankan HTML IngatAbsen sebelumnya dan menambahkan Web Push mel
 6. Jangan unggah JSON hasil generator ke GitHub atau kirim Private Key ke siapa pun.
 7. Buat pasangan kunci satu kali saja. Jangan ganti setelah perangkat pengguna berlangganan push.
 
-### 3. Deploy awal
-1. Buat repository GitHub baru, misalnya `ingatabsen`.
-2. Unggah semua isi folder proyek ini ke root repository.
-3. Buat Cloudflare API Token dengan izin deploy Workers.
-4. GitHub → repository Settings → Secrets and variables → Actions → New repository secret:
+### 3. Deploy ke Cloudflare Workers melalui GitHub
+Repository ini menggunakan Cloudflare Workers + Static Assets, bukan deployment Pages biasa.
+1. File workflow otomatis tersedia di `.github/workflows/deploy-worker.yml`.
+2. Di GitHub, buka repository → Settings → Secrets and variables → Actions → New repository secret.
+3. Tambahkan dua secret:
    - `CLOUDFLARE_API_TOKEN`
    - `CLOUDFLARE_ACCOUNT_ID`
-5. Jalankan workflow dari tab Actions atau push ke branch `main`.
+4. Setelah file proyek diunggah ke branch `main`, buka tab Actions.
+5. Pilih workflow **Deploy IngatAbsen Worker** dan pastikan statusnya hijau/success.
+6. Cloudflare Pages lama jangan dihapus. Worker baru akan dibuat terpisah dengan alamat `ingatabsen.<subdomain-akun>.workers.dev`.
+
+Catatan: `wrangler.jsonc` sudah diisi dengan Database ID D1 `ingatabsen-db` yang kamu tunjukkan. Periksa kembali bahwa ID itu sama dengan ID di dashboard Cloudflare sebelum deploy.
 
 ### 4. Tambahkan VAPID variables ke Worker
 Setelah Worker pertama ter-deploy:
-1. Cloudflare Dashboard → Workers & Pages → Worker `ingatabsen`.
+1. Cloudflare Dashboard → Workers & Pages → Workers → Worker `ingatabsen`.
 2. Settings → Variables and Secrets.
 3. Tambahkan:
    - `VAPID_PUBLIC_KEY` — Text

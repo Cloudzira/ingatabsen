@@ -1,3 +1,4 @@
+
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ingatabsen",
@@ -9,6 +10,10 @@
     "run_worker_first": [
       "/api/*"
     ]
+  },
+  "vars": {
+    "VAPID_PUBLIC_KEY": "BDyhNAmALAwB8au3csLekLprhSCbzfNbTnJSVAGlpYXckuvfk0U5qGsroBLot6nHgoXjfsf55NCtnY5a5OQNGVA",
+    "VAPID_SUBJECT": "mailto:awanproject70@gmail.com"
   },
   "d1_databases": [
     {

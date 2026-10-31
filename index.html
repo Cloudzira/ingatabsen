@@ -75,10 +75,10 @@
                     <p class="text-xs text-sky-100 font-light mt-1" id="greeting-text">Selamat Datang, Anggota!</p>
                 </div>
                 <div class="flex items-center space-x-2">
-                    <!-- Tombol Install PWA -->
-                    <button id="btn-install-pwa" title="Instal Aplikasi ke Layar Utama" class="hidden bg-white/20 hover:bg-white/30 text-white px-3 py-2 rounded-2xl backdrop-blur-md transition active:scale-95 text-xs font-semibold flex items-center space-x-1.5 border border-white/20">
+                    <!-- Tombol Install PWA (Diperbarui: Selalu Tampil) -->
+                    <button id="btn-install-pwa" title="Instal Aplikasi ke Layar Utama" class="bg-white/20 hover:bg-white/30 text-white px-3 py-2 rounded-2xl backdrop-blur-md transition active:scale-95 text-xs font-semibold flex items-center space-x-1.5 border border-white/20 shadow-sm">
                         <i class="fa-solid fa-download"></i>
-                        <span class="hidden sm:inline">Instal</span>
+                        <span>Instal</span>
                     </button>
                     <!-- Tombol Tes Suara & Getar -->
                     <button id="btn-sound-test" title="Tes Suara Alarm & Getar" class="bg-white/20 hover:bg-white/30 text-white p-2.5 rounded-2xl backdrop-blur-md transition active:scale-95 text-sm flex items-center justify-center space-x-1 border border-white/20">
@@ -317,16 +317,19 @@
                             showToast('Aplikasi berhasil dipasang di layar utama!', 'success');
                         }
                         deferredInstallPrompt = null;
-                        btnInstallPwa.classList.add('hidden');
                     } else {
-                        showToast('Gunakan menu browser titik 3 -> "Tambahkan ke Layar Utama"', 'info');
+                        // Jika running di iframe/preview atau browser desktop
+                        showToast('Di HP: Ketuk menu browser (titik 3) -> pilih "Tambahkan ke Layar Utama"', 'info');
                     }
                 });
             }
 
             // Detect if already running as standalone PWA
             if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-                if (btnInstallPwa) btnInstallPwa.classList.add('hidden');
+                if (btnInstallPwa) {
+                    btnInstallPwa.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-300"></i> <span>Terpasang</span>`;
+                    btnInstallPwa.classList.add('opacity-80');
+                }
             }
 
             // --- Alarm & Vibration Loop State ---

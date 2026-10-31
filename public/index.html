@@ -103,17 +103,16 @@
         </header>
 
         <!-- Banner Alarm Aktif (Visual Warning & Stop Alarm) -->
-        <div id="alarm-banner" class="hidden bg-rose-600 text-white p-4 animate-pulse flex items-center justify-between shadow-inner">
-            <div class="flex items-center space-x-3">
-                <i class="fa-solid fa-triangle-exclamation text-xl animate-bounce"></i>
-                <div>
-                    <h3 class="text-xs font-bold uppercase tracking-wider" id="alarm-banner-title">ALARM PRESENSI AKTIF!</h3>
-                    <p class="text-[11px] text-rose-100" id="alarm-banner-desc">Getar & suara aktif. Klik tombol presensi untuk mematikan.</p>
-                </div>
+        <div id="alarm-banner" class="hidden fixed inset-0 z-40 bg-rose-700 text-white p-6 animate-pulse flex flex-col items-center justify-center gap-8 text-center">
+            <div class="flex flex-col items-center gap-3">
+                <i class="fa-solid fa-bell text-6xl animate-bounce"></i>
+                <h3 class="text-2xl font-bold uppercase tracking-wider" id="alarm-banner-title">ALARM PRESENSI AKTIF!</h3>
+                <p class="text-sm text-rose-100" id="alarm-banner-desc">Getar & suara aktif sampai Anda menekan tombol.</p>
             </div>
-            <div class="flex flex-col gap-1.5">
-                <button id="btn-stop-alarm-only" class="bg-white text-rose-700 text-xs font-bold px-3 py-1.5 rounded-xl shadow hover:bg-rose-50 transition active:scale-95">Matikan Alarm</button>
-                <button id="btn-snooze" class="bg-rose-800/60 text-white text-xs font-semibold px-3 py-1.5 rounded-xl border border-white/30 active:scale-95">Tunda 10 mnt</button>
+            <div class="flex flex-col gap-3 w-full max-w-xs">
+                <a id="btn-alarm-open" href="#" target="_blank" rel="noopener noreferrer" class="bg-emerald-500 text-white text-base font-bold py-4 rounded-2xl shadow-lg active:scale-95 flex items-center justify-center gap-2"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Presensi Sekarang</a>
+                <button id="btn-stop-alarm-only" class="bg-white text-rose-700 text-base font-bold py-3 rounded-2xl shadow active:scale-95">Matikan Getar</button>
+                <button id="btn-snooze" class="bg-rose-900/60 text-white text-sm font-semibold py-2.5 rounded-2xl border border-white/30 active:scale-95">Tunda 10 mnt</button>
             </div>
         </div>
 
@@ -228,13 +227,13 @@
                         <div>
                             <label for="repeat-count" class="block text-[11px] font-semibold text-slate-600 mb-1">Ulangi Jika Belum Absen:</label>
                             <select id="repeat-count" class="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white">
-                                <option value="0">Tidak diulang</option><option value="1">1 kali</option><option value="2">2 kali</option><option value="3">3 kali</option><option value="5">5 kali</option>
+                                <option value="0">Tidak diulang</option><option value="1">1 kali</option><option value="2">2 kali</option><option value="3">3 kali</option><option value="5">5 kali</option><option value="10">10 kali</option>
                             </select>
                         </div>
                         <div>
                             <label for="repeat-interval" class="block text-[11px] font-semibold text-slate-600 mb-1">Selang Pengulangan:</label>
                             <select id="repeat-interval" class="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white">
-                                <option value="3">3 menit</option><option value="5">5 menit</option><option value="10">10 menit</option>
+                                <option value="1">1 menit</option><option value="3">3 menit</option><option value="5">5 menit</option><option value="10">10 menit</option>
                             </select>
                         </div>
                     </div>
@@ -746,7 +745,8 @@
                 if (isAlarmActive) return;
                 isAlarmActive = true;
                 activeType = type || null;
-                autoStopTimer = setTimeout(() => stopContinuousAlarm(), 180000);
+                autoStopTimer = setTimeout(() => stopContinuousAlarm(), 600000);
+                document.getElementById('btn-alarm-open').href = appData.linkUrl;
                 document.getElementById('btn-snooze').classList.toggle('hidden', !activeType);
 
                 // 1. Tampilkan Visual Banner
@@ -763,10 +763,10 @@
                 // 3. Jalankan Vibration API Berulang (Pola: Getar 1000ms, Diam 500ms)
                 if ("vibrate" in navigator) {
                     try {
-                        navigator.vibrate([1000, 500]);
+                        navigator.vibrate([2000, 400]);
                         vibrationInterval = setInterval(() => {
-                            navigator.vibrate([1000, 500]);
-                        }, 1500);
+                            navigator.vibrate([2000, 400]);
+                        }, 2400);
                     } catch (err) {
                         console.log("Vibration error/blocked:", err);
                     }
@@ -898,6 +898,7 @@
             });
 
             // Tombol Khusus Matikan Alarm Saja
+            document.getElementById('btn-alarm-open').addEventListener('click', () => stopContinuousAlarm());
             btnStopAlarmOnly.addEventListener('click', () => {
                 stopContinuousAlarm();
             });

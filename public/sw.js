@@ -1,5 +1,6 @@
 const CACHE = 'ingatabsen-shell-v2';
-const VIBRATE = [800, 250, 800, 250, 1200];
+const VIBRATE = [1500, 300, 1500, 300, 1500, 300, 1500];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => e.waitUntil(
@@ -60,7 +61,16 @@ self.addEventListener('push', e => {
   if (meta.type) opts.actions = [{ action: 'done', title: '✔ Sudah Absen' }, { action: 'snooze', title: '⏱ Tunda' }];
   e.waitUntil((async () => {
     await self.registration.showNotification(d.title || 'IngatAbsen', opts);
-    if (meta.type) badge(1);
+    if (meta.type) {
+      badge(1);
+      // Efek 'telepon': tampilkan ulang (getar lagi) tiap 6 dtk selama notifikasi belum diklik/ditutup.
+      for (let i = 0; i < 6; i++) {
+        await sleep(6000);
+        const still = await self.registration.getNotifications({ tag: opts.tag });
+        if (!still.length) break;
+        await self.registration.showNotification(d.title || 'IngatAbsen', opts);
+      }
+    }
     await tellClients({ type: 'reminder', reminderType: meta.type || null, title: d.title, body: d.body });
   })());
 });

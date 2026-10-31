@@ -52,7 +52,7 @@ function parseSettings(b, strict) {
     timeMasuk: m || '07:00', timePulang: p || '15:00',
     timezone: validTimeZone(b.timezone) ? b.timezone : 'Asia/Jakarta',
     days: (days.length ? days : [1, 2, 3, 4, 5, 6]).join(','),
-    repeatCount: Math.min(5, Math.max(0, parseInt(b.repeatCount ?? 2, 10) || 0)),
+    repeatCount: Math.min(10, Math.max(0, parseInt(b.repeatCount ?? 2, 10) || 0)),
     repeatInterval: Math.min(30, Math.max(1, parseInt(b.repeatInterval ?? 5, 10) || 5)),
     pausedUntil: /^\d{4}-\d{2}-\d{2}$/.test(b.pausedUntil || '') ? b.pausedUntil : null
   };

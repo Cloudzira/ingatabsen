@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">IngatAbsen</string>
     <!-- GANTI dengan alamat aplikasi web Anda (harus diawali https:// dan diakhiri /) -->
-    <string name="app_url">https://GANTI-DENGAN-DOMAIN-ANDA/</string>
+    <string name="app_url">https://ingatabsen.kurniapedia.my.id/</string>
 </resources>

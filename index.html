@@ -9,6 +9,11 @@
     <!-- Font Inter & FontAwesome Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PWA Web App Manifest Inline Data URI -->
+    <link rel="manifest" href='data:application/manifest+json,{"name":"IngatAbsen","short_name":"IngatAbsen","start_url":".","display":"standalone","background_color":"#0284c7","theme_color":"#0284c7","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/3602/3602145.png","sizes":"512x512","type":"image/png"}]}'>
+    <meta name="theme-color" content="#0284c7">
+
     <script>
         tailwind.config = {
             theme: {
@@ -69,10 +74,18 @@
                     </div>
                     <p class="text-xs text-sky-100 font-light mt-1" id="greeting-text">Selamat Datang, Anggota!</p>
                 </div>
-                <button id="btn-sound-test" title="Tes Suara Alarm & Getar" class="bg-white/20 hover:bg-white/30 text-white p-2.5 rounded-2xl backdrop-blur-md transition active:scale-95 text-sm flex items-center justify-center space-x-1">
-                    <i class="fa-solid fa-bell font-bold"></i>
-                    <i class="fa-solid fa-mobile-screen-button text-xs"></i>
-                </button>
+                <div class="flex items-center space-x-2">
+                    <!-- Tombol Install PWA -->
+                    <button id="btn-install-pwa" title="Instal Aplikasi ke Layar Utama" class="hidden bg-white/20 hover:bg-white/30 text-white px-3 py-2 rounded-2xl backdrop-blur-md transition active:scale-95 text-xs font-semibold flex items-center space-x-1.5 border border-white/20">
+                        <i class="fa-solid fa-download"></i>
+                        <span class="hidden sm:inline">Instal</span>
+                    </button>
+                    <!-- Tombol Tes Suara & Getar -->
+                    <button id="btn-sound-test" title="Tes Suara Alarm & Getar" class="bg-white/20 hover:bg-white/30 text-white p-2.5 rounded-2xl backdrop-blur-md transition active:scale-95 text-sm flex items-center justify-center space-x-1 border border-white/20">
+                        <i class="fa-solid fa-bell font-bold"></i>
+                        <i class="fa-solid fa-mobile-screen-button text-xs"></i>
+                    </button>
+                </div>
             </div>
 
             <!-- Date & Time Card Display -->
@@ -214,11 +227,14 @@
             <!-- Catatan Edukasi Fitur Getar HP -->
             <section class="bg-sky-50 border border-sky-200/80 rounded-2xl p-4 flex items-start space-x-3">
                 <div class="p-2 bg-sky-100 rounded-xl text-sky-600 shrink-0">
-                    <i class="fa-solid fa-circle-info"></i>
+                    <i class="fa-solid fa-mobile-screen-button"></i>
                 </div>
                 <div class="text-xs text-sky-900 leading-relaxed">
-                    <h3 class="font-bold mb-0.5">Catatan Fitur Getar HP:</h3>
-                    <p class="text-sky-700">Fitur getar memerlukan izin serta setidaknya satu interaksi layar (seperti mengetuk tombol <i>Tes Suara Alarm</i> atau <i>Izinkan Notifikasi</i>) di HP Anda agar sistem browser mengizinkan akses getaran.</p>
+                    <h3 class="font-bold mb-0.5">Agar Notifikasi & Getar Aktif Saat App Ditutup:</h3>
+                    <ol class="list-decimal list-inside space-y-1 text-sky-800">
+                        <li>Tekan menu titik tiga di browser HP Anda, lalu pilih <b>"Tambahkan ke Layar Utama" (Add to Home Screen)</b>.</li>
+                        <li>Pastikan mengetuk tombol <b>"Izinkan Notifikasi"</b> di menu pengaturan bawah agar HP memberikan izin pengingat latar belakang.</li>
+                    </ol>
                 </div>
             </section>
 
@@ -272,11 +288,46 @@
             const btnSaveSettings = document.getElementById('btn-save-settings');
             const btnRequestNotif = document.getElementById('btn-request-notif');
             const btnSoundTest = document.getElementById('btn-sound-test');
+            const btnInstallPwa = document.getElementById('btn-install-pwa');
 
             const alarmBanner = document.getElementById('alarm-banner');
             const alarmBannerTitle = document.getElementById('alarm-banner-title');
             const alarmBannerDesc = document.getElementById('alarm-banner-desc');
             const btnStopAlarmOnly = document.getElementById('btn-stop-alarm-only');
+
+            // --- PWA Deferred Prompt State ---
+            let deferredInstallPrompt = null;
+
+            window.addEventListener('beforeinstallprompt', (e) => {
+                // Mencegah prompt bawaan browser otomatis muncul
+                e.preventDefault();
+                deferredInstallPrompt = e;
+                // Tampilkan tombol instal di UI
+                if (btnInstallPwa) {
+                    btnInstallPwa.classList.remove('hidden');
+                }
+            });
+
+            if (btnInstallPwa) {
+                btnInstallPwa.addEventListener('click', async () => {
+                    if (deferredInstallPrompt) {
+                        deferredInstallPrompt.prompt();
+                        const { outcome } = await deferredInstallPrompt.userChoice;
+                        if (outcome === 'accepted') {
+                            showToast('Aplikasi berhasil dipasang di layar utama!', 'success');
+                        }
+                        deferredInstallPrompt = null;
+                        btnInstallPwa.classList.add('hidden');
+                    } else {
+                        showToast('Gunakan menu browser titik 3 -> "Tambahkan ke Layar Utama"', 'info');
+                    }
+                });
+            }
+
+            // Detect if already running as standalone PWA
+            if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+                if (btnInstallPwa) btnInstallPwa.classList.add('hidden');
+            }
 
             // --- Alarm & Vibration Loop State ---
             let vibrationInterval = null;
@@ -658,6 +709,28 @@
             loadSettings();
             updateClock();
             setInterval(updateClock, 1000);
+
+            // --- Register Inline Service Worker for PWA Background Support ---
+            if ('serviceWorker' in navigator) {
+                const swCode = `
+                    self.addEventListener('install', (e) => self.skipWaiting());
+                    self.addEventListener('activate', (e) => self.clients.claim());
+                    self.addEventListener('notificationclick', (e) => {
+                        e.notification.close();
+                        e.waitUntil(
+                            clients.matchAll({ type: 'window' }).then((clientList) => {
+                                for (const client of clientList) {
+                                    if (client.url && 'focus' in client) return client.focus();
+                                }
+                                if (clients.openWindow) return clients.openWindow('https://kepegawaian.alirsyadpwt.sch.id/asweb/index.php');
+                            })
+                        );
+                    });
+                `;
+                const blob = new Blob([swCode], { type: 'application/javascript' });
+                const swUrl = URL.createObjectURL(blob);
+                navigator.serviceWorker.register(swUrl).catch(err => console.log('SW reg error:', err));
+            }
         });
     </script>
 </body>

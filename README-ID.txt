@@ -55,13 +55,14 @@ Jangan pernah menaruh private key atau API token di file HTML, `wrangler.jsonc`,
 6. Aplikasi akan mengirim notifikasi tes otomatis. Pastikan notifikasi muncul.
 
 ## Pemeriksaan
+- Jika database sudah dibuat sebelumnya, jalankan seluruh isi `migrations/0002_push_test_queue.sql` melalui D1 Console. Untuk database baru, jalankan SQL `0001_init.sql` lalu `0002_push_test_queue.sql`.
 - `/api/health` harus menampilkan `{"ok":true,...}`.
 - `/sw.js` dan `/manifest.webmanifest` harus dapat dibuka.
 - Setelah push diaktifkan, tabel D1 `subscriptions` akan berisi satu baris perangkat.
 - Atur waktu pengingat beberapa menit ke depan untuk menguji Cron.
 
 ## Batasan dan keandalan
-- Cloudflare Cron memeriksa jadwal setiap menit; pengiriman dapat terlambat beberapa menit.
+- Cloudflare Cron memeriksa jadwal setiap menit; pengiriman dapat terlambat beberapa menit. Tes push tertunda juga diproses oleh Cron.
 - Push bisa diterima saat PWA ditutup selama browser/perangkat mendukung Web Push dan perangkat tersambung ke internet.
 - Jika perangkat offline, push service dapat menahan pesan sementara (TTL pengingat 1 jam), tetapi penerimaan setelah online kembali tidak dijamin.
 - PWA murni tidak bisa menjamin alarm saat aplikasi ditutup dan perangkat offline. Itu membutuhkan penjadwalan native pada sistem operasi.

@@ -146,28 +146,18 @@ async function handleApi(request, env) {
 
   if (url.pathname === '/api/test') {
     const row = await env.DB.prepare(
-      'SELECT subscription_json FROM subscriptions WHERE device_id=?'
+      'SELECT device_id FROM subscriptions WHERE device_id=?'
     ).bind(deviceId).first();
     if (!row) return json({ error: 'Perangkat belum terdaftar untuk push.' }, 404);
 
-    try {
-      const response = await sendPush(env, JSON.parse(row.subscription_json), {
-        title: 'Tes notifikasi IngatAbsen',
-        body: 'Jika pesan ini muncul, push notification sudah terhubung.',
-        icon: '/icons/icon-192.png',
-        tag: 'ingatabsen-test',
-        data: { url: '/' }
-      }, 300);
-
-      if (response.status === 404 || response.status === 410) {
-        await env.DB.prepare('DELETE FROM subscriptions WHERE device_id=?').bind(deviceId).run();
-        return json({ error: 'Langganan push sudah tidak berlaku. Aktifkan ulang notifikasi.' }, 410);
-      }
-      if (!response.ok) return json({ error: `Push service menolak pesan (${response.status}).` }, 502);
-      return json({ ok: true });
-    } catch (error) {
-      return json({ error: error.message || 'Gagal mengirim tes notifikasi.' }, 502);
-    }
+    // Queue the test for a future Cron run. This lets the user close the PWA
+    // and lock the screen before the push is actually sent.
+    const id = crypto.randomUUID();
+    const runAt = Math.floor(Date.now() / 1000) + 120;
+    await env.DB.prepare(
+      'INSERT INTO push_test_queue (id, device_id, run_at, attempts) VALUES (?, ?, ?, 0)'
+    ).bind(id, deviceId, runAt).run();
+    return json({ ok: true, queued: true, runAt, delaySeconds: 120 }, 202);
   }
 
   return json({ error: 'Endpoint tidak ditemukan.' }, 404);
@@ -218,7 +208,60 @@ async function deliverReminder(env, row, type, local) {
   }
 }
 
+
+async function runPushTestQueue(env) {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await env.DB.prepare(
+    'SELECT id, device_id, attempts FROM push_test_queue WHERE run_at <= ? ORDER BY run_at LIMIT 100'
+  ).bind(now).all();
+
+  for (const item of (result.results || [])) {
+    const row = await env.DB.prepare(
+      'SELECT subscription_json FROM subscriptions WHERE device_id=?'
+    ).bind(item.device_id).first();
+    if (!row) {
+      await env.DB.prepare('DELETE FROM push_test_queue WHERE id=?').bind(item.id).run();
+      continue;
+    }
+    try {
+      const response = await sendPush(env, JSON.parse(row.subscription_json), {
+        title: 'Tes push layar mati — IngatAbsen',
+        body: 'Berhasil! Web Push diterima saat aplikasi tidak dibuka.',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        tag: `ingatabsen-test-${item.id}`,
+        data: { url: '/' }
+      }, 3600);
+      if (response.ok) {
+        await env.DB.prepare('DELETE FROM push_test_queue WHERE id=?').bind(item.id).run();
+      } else if (response.status === 404 || response.status === 410) {
+        await env.DB.prepare('DELETE FROM subscriptions WHERE device_id=?').bind(item.device_id).run();
+        await env.DB.prepare('DELETE FROM push_test_queue WHERE id=?').bind(item.id).run();
+      } else {
+        const attempts = Number(item.attempts || 0) + 1;
+        if (attempts >= 3) {
+          await env.DB.prepare('DELETE FROM push_test_queue WHERE id=?').bind(item.id).run();
+        } else {
+          await env.DB.prepare('UPDATE push_test_queue SET attempts=?, run_at=? WHERE id=?')
+            .bind(attempts, now + 60, item.id).run();
+        }
+        console.error('Push test rejected:', response.status, await response.text());
+      }
+    } catch (error) {
+      const attempts = Number(item.attempts || 0) + 1;
+      if (attempts >= 3) {
+        await env.DB.prepare('DELETE FROM push_test_queue WHERE id=?').bind(item.id).run();
+      } else {
+        await env.DB.prepare('UPDATE push_test_queue SET attempts=?, run_at=? WHERE id=?')
+          .bind(attempts, now + 60, item.id).run();
+      }
+      console.error('Push test failed:', item.device_id, error);
+    }
+  }
+}
+
 async function runScheduled(env) {
+  await runPushTestQueue(env);
   const result = await env.DB.prepare(`
     SELECT device_id, subscription_json, time_masuk, time_pulang, timezone,
            masuk_checked_date, pulang_checked_date, last_sent_masuk, last_sent_pulang

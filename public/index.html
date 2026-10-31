@@ -511,7 +511,7 @@
 
                     updateNotifButtonState();
                     await apiPost('/api/test', { deviceId: getPushDeviceId() });
-                    showToast('Push aktif! Notifikasi percobaan sudah dikirim.', 'success');
+                    showToast('Push aktif. Tes layar mati dijadwalkan sekitar 2 menit lagi. Tutup aplikasi dan matikan layar HP sekarang.', 'success');
                 } catch (error) {
                     console.error(error);
                     showToast(`Gagal mengaktifkan push: ${error.message}`, 'warning');

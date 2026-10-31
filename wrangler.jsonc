@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "ingatabsen-db",
-      "database_id": "a3f586f5-7bb1-41a6-810f-3ec7bd841522",
+      "database_id": "GANTI_DENGAN_DATABASE_ID_DARI_CLOUDFLARE",
       "migrations_dir": "migrations"
     }
   ],

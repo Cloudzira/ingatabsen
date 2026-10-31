@@ -1,9 +1,9 @@
-
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ingatabsen",
   "main": "src/index.js",
   "compatibility_date": "2026-10-31",
+  "keep_vars": true,
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

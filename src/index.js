@@ -18,6 +18,46 @@ function validTimeZone(value) {
   }
 }
 
+const PUSH_HOSTS = /(^|\.)(fcm\.googleapis\.com|android\.googleapis\.com|push\.services\.mozilla\.com|push\.apple\.com|notify\.windows\.com)$/;
+const NEW_COLUMNS = {
+  days: "TEXT DEFAULT '1,2,3,4,5,6'", repeat_count: 'INTEGER DEFAULT 2', repeat_interval: 'INTEGER DEFAULT 5',
+  paused_until: 'TEXT', sent_count_masuk: 'INTEGER DEFAULT 0', sent_count_pulang: 'INTEGER DEFAULT 0',
+  sent_at_masuk: 'INTEGER DEFAULT 0', sent_at_pulang: 'INTEGER DEFAULT 0',
+  next_at_masuk: 'INTEGER DEFAULT 0', next_at_pulang: 'INTEGER DEFAULT 0',
+  last_push_at: 'INTEGER DEFAULT 0', last_push_status: 'INTEGER DEFAULT 0'
+};
+let schemaReady = false;
+// Database otomatis di-upgrade: tidak perlu menjalankan SQL manual lagi.
+async function ensureSchema(env) {
+  if (schemaReady) return;
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS subscriptions (device_id TEXT PRIMARY KEY, subscription_json TEXT NOT NULL, time_masuk TEXT NOT NULL DEFAULT '07:00', time_pulang TEXT NOT NULL DEFAULT '15:00', timezone TEXT NOT NULL DEFAULT 'Asia/Jakarta', masuk_checked_date TEXT, pulang_checked_date TEXT, last_sent_masuk TEXT, last_sent_pulang TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_test_queue (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, run_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)
+  ]);
+  const info = await env.DB.prepare('PRAGMA table_info(subscriptions)').all();
+  const have = new Set((info.results || []).map(r => r.name));
+  for (const [name, ddl] of Object.entries(NEW_COLUMNS)) {
+    if (have.has(name)) continue;
+    try { await env.DB.prepare(`ALTER TABLE subscriptions ADD COLUMN ${name} ${ddl}`).run(); }
+    catch (e) { if (!/duplicate column/i.test(String(e.message))) throw e; }
+  }
+  schemaReady = true;
+}
+
+function parseSettings(b, strict) {
+  const m = validTime(b.timeMasuk) ? b.timeMasuk : null, p = validTime(b.timePulang) ? b.timePulang : null;
+  if (strict && (!m || !p)) return null;
+  const days = Array.isArray(b.days) ? [...new Set(b.days.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6))].sort() : [];
+  return {
+    timeMasuk: m || '07:00', timePulang: p || '15:00',
+    timezone: validTimeZone(b.timezone) ? b.timezone : 'Asia/Jakarta',
+    days: (days.length ? days : [1, 2, 3, 4, 5, 6]).join(','),
+    repeatCount: Math.min(5, Math.max(0, parseInt(b.repeatCount ?? 2, 10) || 0)),
+    repeatInterval: Math.min(30, Math.max(1, parseInt(b.repeatInterval ?? 5, 10) || 5)),
+    pausedUntil: /^\d{4}-\d{2}-\d{2}$/.test(b.pausedUntil || '') ? b.pausedUntil : null
+  };
+}
+
 function localClock(timeZone, date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -25,6 +65,7 @@ function localClock(timeZone, date = new Date()) {
   }).formatToParts(date);
   const p = Object.fromEntries(parts.map(item => [item.type, item.value]));
   return {
+    weekday: new Date(Date.UTC(+p.year, +p.month - 1, +p.day)).getUTCDay(),
     date: `${p.year}-${p.month}-${p.day}`,
     time: `${p.hour}:${p.minute}`,
     minutes: Number(p.hour) * 60 + Number(p.minute)
@@ -35,6 +76,7 @@ function validateSubscription(subscription) {
   return subscription &&
     typeof subscription.endpoint === 'string' &&
     subscription.endpoint.startsWith('https://') &&
+    PUSH_HOSTS.test(new URL(subscription.endpoint).hostname) &&
     subscription.keys &&
     typeof subscription.keys.p256dh === 'string' &&
     typeof subscription.keys.auth === 'string';
@@ -67,6 +109,7 @@ async function readBody(request) {
 
 async function handleApi(request, env) {
   const url = new URL(request.url);
+  await ensureSchema(env);
   const origin = request.headers.get('origin');
   if (origin && origin !== url.origin) return json({ error: 'Origin tidak diizinkan.' }, 403);
 
@@ -82,43 +125,34 @@ async function handleApi(request, env) {
   try { body = await readBody(request); }
   catch (error) { return json({ error: error.message || 'JSON tidak valid.' }, 400); }
 
-  const deviceId = String(body.deviceId || '').slice(0, 100);
-  if (!deviceId) return json({ error: 'deviceId wajib diisi.' }, 400);
+  const deviceId = String(body.deviceId || '');
+  if (!/^[A-Za-z0-9_-]{8,100}$/.test(deviceId)) return json({ error: 'deviceId tidak valid.' }, 400);
 
   if (url.pathname === '/api/subscribe') {
     const subscription = body.subscription;
     if (!validateSubscription(subscription)) return json({ error: 'Data langganan push tidak valid.' }, 400);
 
-    const timeMasuk = validTime(body.timeMasuk) ? body.timeMasuk : '07:00';
-    const timePulang = validTime(body.timePulang) ? body.timePulang : '15:00';
-    const timezone = validTimeZone(body.timezone) ? body.timezone : 'Asia/Jakarta';
-
+    const c = parseSettings(body, false);
     await env.DB.prepare(`
       INSERT INTO subscriptions
-        (device_id, subscription_json, time_masuk, time_pulang, timezone, updated_at)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        (device_id, subscription_json, time_masuk, time_pulang, timezone, days, repeat_count, repeat_interval, paused_until, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(device_id) DO UPDATE SET
-        subscription_json=excluded.subscription_json,
-        time_masuk=excluded.time_masuk,
-        time_pulang=excluded.time_pulang,
-        timezone=excluded.timezone,
-        updated_at=CURRENT_TIMESTAMP
-    `).bind(deviceId, JSON.stringify(subscription), timeMasuk, timePulang, timezone).run();
+        subscription_json=excluded.subscription_json, time_masuk=excluded.time_masuk, time_pulang=excluded.time_pulang,
+        timezone=excluded.timezone, days=excluded.days, repeat_count=excluded.repeat_count,
+        repeat_interval=excluded.repeat_interval, paused_until=excluded.paused_until, updated_at=CURRENT_TIMESTAMP
+    `).bind(deviceId, JSON.stringify(subscription), c.timeMasuk, c.timePulang, c.timezone, c.days, c.repeatCount, c.repeatInterval, c.pausedUntil).run();
 
     return json({ ok: true });
   }
 
   if (url.pathname === '/api/settings') {
-    const timeMasuk = validTime(body.timeMasuk) ? body.timeMasuk : null;
-    const timePulang = validTime(body.timePulang) ? body.timePulang : null;
-    const timezone = validTimeZone(body.timezone) ? body.timezone : 'Asia/Jakarta';
-    if (!timeMasuk || !timePulang) return json({ error: 'Format jam tidak valid.' }, 400);
-
+    const c = parseSettings(body, true);
+    if (!c) return json({ error: 'Format jam tidak valid.' }, 400);
     const result = await env.DB.prepare(`
-      UPDATE subscriptions
-      SET time_masuk=?, time_pulang=?, timezone=?, updated_at=CURRENT_TIMESTAMP
+      UPDATE subscriptions SET time_masuk=?, time_pulang=?, timezone=?, days=?, repeat_count=?, repeat_interval=?, paused_until=?, updated_at=CURRENT_TIMESTAMP
       WHERE device_id=?
-    `).bind(timeMasuk, timePulang, timezone, deviceId).run();
+    `).bind(c.timeMasuk, c.timePulang, c.timezone, c.days, c.repeatCount, c.repeatInterval, c.pausedUntil, deviceId).run();
 
     if (!result.meta?.changes) return json({ error: 'Perangkat belum mengaktifkan push.' }, 404);
     return json({ ok: true });
@@ -139,6 +173,22 @@ async function handleApi(request, env) {
     return json({ ok: true });
   }
 
+  if (url.pathname === '/api/state' || url.pathname === '/api/snooze') {
+    const row = await env.DB.prepare('SELECT * FROM subscriptions WHERE device_id=?').bind(deviceId).first();
+    if (!row) return json({ registered: false }, url.pathname === '/api/state' ? 200 : 404);
+    const local = localClock(validTimeZone(row.timezone) ? row.timezone : 'Asia/Jakarta');
+    if (url.pathname === '/api/state') {
+      return json({ registered: true, masukChecked: row.masuk_checked_date === local.date, pulangChecked: row.pulang_checked_date === local.date,
+        lastPushAt: row.last_push_at || 0, lastPushStatus: row.last_push_status || 0 });
+    }
+    const t = body.type === 'masuk' ? 'masuk' : body.type === 'pulang' ? 'pulang' : null;
+    if (!t) return json({ error: 'Tipe tidak valid.' }, 400);
+    const minutes = Math.min(60, Math.max(1, parseInt(body.minutes, 10) || 10));
+    await env.DB.prepare(`UPDATE subscriptions SET sent_count_${t}=CASE WHEN last_sent_${t} IS ? THEN sent_count_${t} ELSE 0 END, next_at_${t}=?, last_sent_${t}=? WHERE device_id=?`)
+      .bind(local.date, Math.floor(Date.now() / 1000) + minutes * 60, local.date, deviceId).run();
+    return json({ ok: true, minutes });
+  }
+
   if (url.pathname === '/api/unsubscribe') {
     await env.DB.prepare('DELETE FROM subscriptions WHERE device_id=?').bind(deviceId).run();
     return json({ ok: true });
@@ -150,6 +200,15 @@ async function handleApi(request, env) {
     ).bind(deviceId).first();
     if (!row) return json({ error: 'Perangkat belum terdaftar untuk push.' }, 404);
 
+    if (body.mode === 'now') {
+      const full = await env.DB.prepare('SELECT subscription_json FROM subscriptions WHERE device_id=?').bind(deviceId).first();
+      const r = await sendPush(env, JSON.parse(full.subscription_json), {
+        title: 'Tes notifikasi — IngatAbsen', body: 'Berhasil! Notifikasi dan getar dari server diterima.',
+        tag: 'ingatabsen-test', data: { url: '/' } }, 600);
+      if (r.status === 404 || r.status === 410) await env.DB.prepare('DELETE FROM subscriptions WHERE device_id=?').bind(deviceId).run();
+      return json({ ok: r.ok, status: r.status }, r.ok ? 200 : 502);
+    }
+    await env.DB.prepare('DELETE FROM push_test_queue WHERE device_id=?').bind(deviceId).run();
     // Queue the test for a future Cron run. This lets the user close the PWA
     // and lock the screen before the push is actually sent.
     const id = crypto.randomUUID();
@@ -163,47 +222,60 @@ async function handleApi(request, env) {
   return json({ error: 'Endpoint tidak ditemukan.' }, 404);
 }
 
-async function deliverReminder(env, row, type, local) {
-  const isMasuk = type === 'masuk';
-  const time = isMasuk ? row.time_masuk : row.time_pulang;
+const GRACE_FIRST_MIN = 10, MAX_LATE_MIN = 180;
+
+async function deliverReminder(env, row, t, local, nowSec) {
+  const time = row[`time_${t}`];
   if (!validTime(time)) return;
+  const days = String(row.days ?? '1,2,3,4,5,6').split(',').map(Number);
+  if (!days.includes(local.weekday) || (row.paused_until && row.paused_until >= local.date)) return;
+  if (row[`${t}_checked_date`] === local.date) return;
 
-  const targetMinutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
-  const delay = local.minutes - targetMinutes;
+  const same = row[`last_sent_${t}`] === local.date;
+  const count = same ? Number(row[`sent_count_${t}`] || 0) : 0;
+  const sentAt = same ? Number(row[`sent_at_${t}`] || 0) : 0;
+  const nextAt = same ? Number(row[`next_at_${t}`] || 0) : 0;
+  const maxSends = 1 + Number(row.repeat_count ?? 2);
+  const interval = Number(row.repeat_interval || 5) * 60;
+  const elapsed = local.minutes - (Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5)));
 
-  // Cron checks each minute. A five-minute grace window tolerates small delays.
-  if (delay < 0 || delay > 5) return;
-  if ((isMasuk ? row.masuk_checked_date : row.pulang_checked_date) === local.date) return;
-  if ((isMasuk ? row.last_sent_masuk : row.last_sent_pulang) === local.date) return;
+  let due = false;
+  if (nextAt > 0) due = nowSec >= nextAt;                                   // sedang ditunda
+  else if (count === 0) due = elapsed >= 0 && elapsed <= GRACE_FIRST_MIN;   // pengingat pertama
+  else if (count < maxSends) due = nowSec >= sentAt + interval && elapsed <= MAX_LATE_MIN; // ulangi
+  if (!due) return;
 
-  const column = isMasuk ? 'last_sent_masuk' : 'last_sent_pulang';
+  const prev = { last: row[`last_sent_${t}`] ?? null, count: Number(row[`sent_count_${t}`] || 0), at: Number(row[`sent_at_${t}`] || 0), next: Number(row[`next_at_${t}`] || 0) };
   const claim = await env.DB.prepare(
-    `UPDATE subscriptions SET ${column}=? WHERE device_id=? AND (${column} IS NULL OR ${column}<>?)`
-  ).bind(local.date, row.device_id, local.date).run();
+    `UPDATE subscriptions SET last_sent_${t}=?, sent_count_${t}=?, sent_at_${t}=?, next_at_${t}=0
+     WHERE device_id=? AND last_sent_${t} IS ? AND COALESCE(sent_count_${t},0)=? AND COALESCE(sent_at_${t},0)=?`
+  ).bind(local.date, count + 1, nowSec, row.device_id, prev.last, prev.count, prev.at).run();
   if (!claim.meta?.changes) return;
+
+  const label = t === 'masuk' ? 'masuk' : 'pulang';
+  const n = count + 1;
+  const rollback = () => env.DB.prepare(
+    `UPDATE subscriptions SET last_sent_${t}=?, sent_count_${t}=?, sent_at_${t}=?, next_at_${t}=? WHERE device_id=? AND last_sent_${t}=? AND sent_at_${t}=?`
+  ).bind(prev.last, prev.count, prev.at, prev.next, row.device_id, local.date, nowSec).run();
 
   try {
     const response = await sendPush(env, JSON.parse(row.subscription_json), {
-      title: isMasuk ? 'Waktunya Presensi Masuk!' : 'Waktunya Presensi Pulang!',
-      body: isMasuk
-        ? 'Jangan lupa mengisi presensi kehadiran awal Anda.'
-        : 'Saatnya melakukan presensi kepulangan hari ini.',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      tag: `ingatabsen-${type}-${local.date}`,
-      data: { url: '/' }
+      title: `⏰ Waktunya Presensi ${label === 'masuk' ? 'Masuk' : 'Pulang'}!`,
+      body: n === 1 ? (t === 'masuk' ? 'Jangan lupa mengisi presensi kehadiran awal Anda.' : 'Saatnya melakukan presensi kepulangan hari ini.')
+                    : `Pengingat ke-${n}: Anda belum menandai presensi ${label}.`,
+      icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
+      tag: `ingatabsen-${t}-${local.date}`,
+      data: { url: '/', deviceId: row.device_id, type: t, date: local.date, snoozeMinutes: 10 }
     }, 3600);
-
+    await env.DB.prepare('UPDATE subscriptions SET last_push_at=?, last_push_status=? WHERE device_id=?').bind(nowSec, response.status, row.device_id).run();
     if (response.status === 404 || response.status === 410) {
       await env.DB.prepare('DELETE FROM subscriptions WHERE device_id=?').bind(row.device_id).run();
     } else if (!response.ok) {
-      await env.DB.prepare(`UPDATE subscriptions SET ${column}=NULL WHERE device_id=? AND ${column}=?`)
-        .bind(row.device_id, local.date).run();
+      await rollback();
       console.error('Push service error:', response.status, await response.text());
     }
   } catch (error) {
-    await env.DB.prepare(`UPDATE subscriptions SET ${column}=NULL WHERE device_id=? AND ${column}=?`)
-      .bind(row.device_id, local.date).run();
+    await rollback();
     console.error('Push delivery failed:', row.device_id, error);
   }
 }
@@ -261,22 +333,18 @@ async function runPushTestQueue(env) {
 }
 
 async function runScheduled(env) {
+  await ensureSchema(env);
   await runPushTestQueue(env);
-  const result = await env.DB.prepare(`
-    SELECT device_id, subscription_json, time_masuk, time_pulang, timezone,
-           masuk_checked_date, pulang_checked_date, last_sent_masuk, last_sent_pulang
-    FROM subscriptions
-  `).all();
-
-  for (const row of (result.results || [])) {
-    try {
+  const result = await env.DB.prepare('SELECT * FROM subscriptions').all();
+  const rows = result.results || [];
+  const nowSec = Math.floor(Date.now() / 1000);
+  for (let i = 0; i < rows.length; i += 10) {
+    await Promise.allSettled(rows.slice(i, i + 10).map(async row => {
       const timezone = validTimeZone(row.timezone) ? row.timezone : 'Asia/Jakarta';
       const local = localClock(timezone);
-      await deliverReminder(env, row, 'masuk', local);
-      await deliverReminder(env, row, 'pulang', local);
-    } catch (error) {
-      console.error('Reminder processing error:', row.device_id, error);
-    }
+      await deliverReminder(env, row, 'masuk', local, nowSec);
+      await deliverReminder(env, row, 'pulang', local, nowSec);
+    }));
   }
 }
 
@@ -293,6 +361,6 @@ export default {
     return env.ASSETS.fetch(request);
   },
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(runScheduled(env));
+    ctx.waitUntil(runScheduled(env).catch(e => console.error('Cron error:', e)));
   }
 };

@@ -298,28 +298,33 @@
             // --- PWA Deferred Prompt State ---
             let deferredInstallPrompt = null;
 
+            // Tangkap event bawaan browser agar siap memicu popup instalasi langsung
             window.addEventListener('beforeinstallprompt', (e) => {
-                // Mencegah prompt bawaan browser otomatis muncul
+                // Mencegah banner otomatis mengganggu layar
                 e.preventDefault();
                 deferredInstallPrompt = e;
-                // Tampilkan tombol instal di UI
+                
+                // Pastikan tombol instal aktif
                 if (btnInstallPwa) {
-                    btnInstallPwa.classList.remove('hidden');
+                    btnInstallPwa.classList.remove('opacity-50');
                 }
             });
 
             if (btnInstallPwa) {
                 btnInstallPwa.addEventListener('click', async () => {
+                    // Jika browser sudah menyiapkan prompt instalasi, langsung tampilkan popup!
                     if (deferredInstallPrompt) {
                         deferredInstallPrompt.prompt();
                         const { outcome } = await deferredInstallPrompt.userChoice;
                         if (outcome === 'accepted') {
                             showToast('Aplikasi berhasil dipasang di layar utama!', 'success');
+                            btnInstallPwa.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-300"></i> <span>Terpasang</span>`;
                         }
                         deferredInstallPrompt = null;
                     } else {
-                        // Jika running di iframe/preview atau browser desktop
-                        showToast('Di HP: Ketuk menu browser (titik 3) -> pilih "Tambahkan ke Layar Utama"', 'info');
+                        // Jika dibuka di lingkungan preview/iframe atau iOS (Safari) yang tidak mendukung beforeinstallprompt
+                        // Jalankan alternatif langsung coba panggil navigator.install/prompt jika ada
+                        showToast('Popup instalasi dipicu oleh browser. Jika tidak muncul, aplikasi mungkin sudah terpasang atau buka via Chrome.', 'info');
                     }
                 });
             }

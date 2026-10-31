@@ -1,4 +1,3 @@
-
 name: Deploy IngatAbsen Worker
 
 on:
@@ -24,4 +23,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          secrets: |
+            VAPID_PRIVATE_KEY
           command: --experimental-json-config deploy
+        env:
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}

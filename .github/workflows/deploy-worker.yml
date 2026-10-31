@@ -23,8 +23,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          preCommands: npm install
           secrets: |
             VAPID_PRIVATE_KEY
-          command: --experimental-json-config deploy
+          command: deploy
         env:
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}

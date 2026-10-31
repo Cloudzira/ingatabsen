@@ -449,6 +449,8 @@
 
                 updateBadges();
                 updateNotifButtonState();
+                pullNative();
+                syncNative();
             }
 
             function ensureToday(silent) {
@@ -478,8 +480,33 @@
                 });
             }
 
+            // Jembatan ke aplikasi Android native (alarm sistem). Diabaikan di browser biasa.
+            function syncNative() {
+                try {
+                    if (!window.AndroidBridge) return;
+                    AndroidBridge.sync(JSON.stringify({
+                        timeMasuk: appData.timeMasuk, timePulang: appData.timePulang, days: appData.days,
+                        repeatCount: appData.repeatCount, repeatInterval: appData.repeatInterval,
+                        pausedUntil: appData.pausedUntil || '', linkUrl: appData.linkUrl,
+                        masukChecked: appData.masukChecked, pulangChecked: appData.pulangChecked, date: localISODate()
+                    }));
+                } catch (e) {}
+            }
+            function pullNative() {
+                try {
+                    if (!window.AndroidBridge) return;
+                    const st = JSON.parse(AndroidBridge.getState());
+                    if (st.date !== localISODate()) return;
+                    let ch = false;
+                    if (st.masukChecked && !appData.masukChecked) { appData.masukChecked = true; checkMasuk.checked = true; ch = true; }
+                    if (st.pulangChecked && !appData.pulangChecked) { appData.pulangChecked = true; checkPulang.checked = true; ch = true; }
+                    if (ch) { saveSettings(); updateBadges(); }
+                } catch (e) {}
+            }
+
             function saveSettings() {
                 localStorage.setItem('ingat_absen_data', JSON.stringify(appData));
+                syncNative();
             }
 
             // Cloudflare Web Push integration. App data itself remains on this device.
@@ -826,6 +853,7 @@
             // Memeriksa rentang waktu (bukan hanya menit yang persis sama) agar tetap berbunyi
             // walau halaman sempat dibekukan browser, lalu dibuka kembali.
             function checkAlarms() {
+                if (window.AndroidBridge) return; // di aplikasi native, alarm ditangani sistem Android
                 const now = new Date();
                 if (!appData.days.includes(now.getDay())) return;
                 if (appData.pausedUntil && appData.pausedUntil >= localISODate()) return;
@@ -1003,7 +1031,7 @@
             // Saat aplikasi dibuka kembali: cek alarm yang terlewat & sinkronkan status
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState !== 'visible') return;
-                ensureToday(false); checkAlarms(); updateClock();
+                ensureToday(false); pullNative(); checkAlarms(); updateClock();
                 if (pushSubscription) pullServerState();
                 try { navigator.clearAppBadge && navigator.clearAppBadge(); } catch (e) {}
             });

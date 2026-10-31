@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IngatAbsen - Pengingat Presensi Harian</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Inter & FontAwesome Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PWA Web App Manifest Inline Data URI -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <meta name="theme-color" content="#0284c7">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col items-center justify-between p-4 sm:p-6 selection:bg-brand-500 selection:text-white">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none max-w-xs w-full"></div>
+
+    <!-- Main Card Container -->
+    <main class="w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden my-auto transition-all duration-300">
+        
+        <!-- Header Banner -->
+        <header class="bg-gradient-to-r from-sky-600 via-brand-600 to-indigo-600 text-white p-6 sm:p-8 relative overflow-hidden">
+            <!-- Background Decorative Circles -->
+            <div class="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-xl"></div>
+            <div class="absolute -left-6 -top-6 w-24 h-24 bg-white/10 rounded-full blur-lg"></div>
+
+            <div class="relative z-10 flex items-center justify-between">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-clock-rotate-left text-sky-200 text-xl"></i>
+                        <h1 class="text-2xl font-bold tracking-tight">IngatAbsen</h1>
+                    </div>
+                    <p class="text-xs text-sky-100 font-light mt-1" id="greeting-text">Selamat Datang, Anggota!</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <!-- Tombol Install PWA (Diperbarui: Selalu Tampil) -->
+                    <button id="btn-install-pwa" title="Instal Aplikasi ke Layar Utama" class="bg-white/20 hover:bg-white/30 text-white px-3 py-2 rounded-2xl backdrop-blur-md transition active:scale-95 text-xs font-semibold flex items-center space-x-1.5 border border-white/20 shadow-sm">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Instal</span>
+                    </button>
+                    <!-- Tombol Tes Suara & Getar -->
+                    <button id="btn-sound-test" title="Tes Suara Alarm & Getar" class="bg-white/20 hover:bg-white/30 text-white p-2.5 rounded-2xl backdrop-blur-md transition active:scale-95 text-sm flex items-center justify-center space-x-1 border border-white/20">
+                        <i class="fa-solid fa-bell font-bold"></i>
+                        <i class="fa-solid fa-mobile-screen-button text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Date & Time Card Display -->
+            <div class="mt-6 bg-white/15 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex items-center justify-between">
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-sky-100 font-medium" id="current-day">Hari Ini</div>
+                    <div class="text-lg font-semibold text-white mt-0.5" id="current-date">-- --- ----</div>
+                </div>
+                <div class="text-right">
+                    <div class="text-2xl font-bold tracking-tight text-white font-mono" id="current-time">00:00:00</div>
+                    <div class="text-[10px] text-sky-200">WIB / Waktu Lokal</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Banner Alarm Aktif (Visual Warning & Stop Alarm) -->
+        <div id="alarm-banner" class="hidden bg-rose-600 text-white p-4 animate-pulse flex items-center justify-between shadow-inner">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-triangle-exclamation text-xl animate-bounce"></i>
+                <div>
+                    <h3 class="text-xs font-bold uppercase tracking-wider" id="alarm-banner-title">ALARM PRESENSI AKTIF!</h3>
+                    <p class="text-[11px] text-rose-100" id="alarm-banner-desc">Getar & suara aktif. Klik tombol presensi untuk mematikan.</p>
+                </div>
+            </div>
+            <button id="btn-stop-alarm-only" class="bg-white text-rose-700 text-xs font-bold px-3 py-1.5 rounded-xl shadow hover:bg-rose-50 transition active:scale-95">
+                Matikan Alarm
+            </button>
+        </div>
+
+        <!-- Main Content Body -->
+        <div class="p-6 sm:p-8 space-y-6">
+
+            <!-- Primary Action: Open Link -->
+            <section class="space-y-3">
+                <a id="btn-open-presensi" href="#" target="_blank" rel="noopener noreferrer" 
+                   class="w-full bg-gradient-to-r from-brand-500 to-indigo-600 hover:from-brand-600 hover:to-indigo-700 text-white font-semibold py-4 px-6 rounded-2xl shadow-lg shadow-brand-500/25 flex items-center justify-center space-x-3 transition-all duration-200 active:scale-[0.98] group">
+                    <i class="fa-solid fa-arrow-up-right-from-square text-lg group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform"></i>
+                    <span class="text-base tracking-wide">Buka Presensi Sekarang</span>
+                </a>
+                
+                <!-- Configure Link Form -->
+                <div class="flex items-center justify-between text-xs px-1">
+                    <span class="text-slate-500 truncate max-w-[240px]" id="current-link-display">Link: Belum diatur</span>
+                    <button id="btn-toggle-link-input" class="text-brand-600 hover:text-brand-700 font-medium flex items-center space-x-1">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        <span>Ubah Link</span>
+                    </button>
+                </div>
+
+                <div id="link-input-container" class="hidden mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <label for="input-presensi-url" class="block text-xs font-semibold text-slate-600">URL Presensi Sekolah / Kantor:</label>
+                    <div class="flex space-x-2">
+                        <input type="url" id="input-presensi-url" placeholder="https://presensi.sekolah.sch.id" 
+                               class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <button id="btn-save-link" class="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg font-medium hover:bg-slate-900 transition">Simpan</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Daily Checklist Section -->
+            <section class="bg-slate-50 rounded-2xl p-5 border border-slate-200/80 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-2">
+                        <i class="fa-solid fa-circle-check text-emerald-500"></i>
+                        <span>Status Presensi Hari Ini</span>
+                    </h2>
+                    <span class="text-[11px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-medium" id="reset-info">Reset jam 00:00</span>
+                </div>
+
+                <div class="space-y-3">
+                    <!-- Checkbox Masuk -->
+                    <label class="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-slate-300 transition select-none group">
+                        <div class="flex items-center space-x-3">
+                            <input type="checkbox" id="check-masuk" class="w-5 h-5 text-brand-500 rounded-md border-slate-300 focus:ring-brand-500 cursor-pointer">
+                            <div>
+                                <span class="text-sm font-semibold text-slate-800 group-hover:text-brand-600 transition">Presensi Masuk</span>
+                                <p class="text-[11px] text-slate-500">Tercatat untuk kehadiran awal</p>
+                            </div>
+                        </div>
+                        <span id="badge-masuk" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-medium">Belum</span>
+                    </label>
+
+                    <!-- Checkbox Pulang -->
+                    <label class="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-slate-300 transition select-none group">
+                        <div class="flex items-center space-x-3">
+                            <input type="checkbox" id="check-pulang" class="w-5 h-5 text-brand-500 rounded-md border-slate-300 focus:ring-brand-500 cursor-pointer">
+                            <div>
+                                <span class="text-sm font-semibold text-slate-800 group-hover:text-brand-600 transition">Presensi Pulang</span>
+                                <p class="text-[11px] text-slate-500">Tercatat untuk kepulangan / jam selesai</p>
+                            </div>
+                        </div>
+                        <span id="badge-pulang" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-medium">Belum</span>
+                    </label>
+                </div>
+            </section>
+
+            <!-- Alarm & Notification Settings -->
+            <section class="space-y-3">
+                <button id="btn-toggle-settings" class="w-full flex items-center justify-between text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200/70 p-3 rounded-xl transition">
+                    <span class="flex items-center space-x-2">
+                        <i class="fa-solid fa-bell text-brand-500"></i>
+                        <span>Pengaturan Jam Pengingat & Notifikasi</span>
+                    </span>
+                    <i class="fa-solid fa-chevron-down transition-transform duration-200" id="chevron-settings"></i>
+                </button>
+
+                <div id="settings-container" class="hidden p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                    <!-- Notification Permission Toggle -->
+                    <div class="flex items-center justify-between pt-1">
+                        <div>
+                            <span class="text-xs font-bold text-slate-700">Notifikasi Desktop/HP</span>
+                            <p class="text-[11px] text-slate-500">Kirim pemberitahuan pop-up saat jam absen</p>
+                        </div>
+                        <button id="btn-request-notif" class="text-xs px-3 py-1.5 bg-brand-50 text-brand-600 hover:bg-brand-100 font-semibold rounded-lg border border-brand-200 transition">
+                            Izinkan Notifikasi
+                        </button>
+                    </div>
+
+                    <hr class="border-slate-200">
+
+                    <!-- Time Selectors -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="time-masuk" class="block text-[11px] font-semibold text-slate-600 mb-1">Jam Pengingat Masuk:</label>
+                            <input type="time" id="time-masuk" class="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div>
+                            <label for="time-pulang" class="block text-[11px] font-semibold text-slate-600 mb-1">Jam Pengingat Pulang:</label>
+                            <input type="time" id="time-pulang" class="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                    </div>
+
+                    <button id="btn-save-settings" class="w-full bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold py-2.5 rounded-xl transition">
+                        Simpan Pengaturan Jam
+                    </button>
+                </div>
+            </section>
+
+            <!-- Catatan Edukasi Fitur Getar HP -->
+            <section class="bg-sky-50 border border-sky-200/80 rounded-2xl p-4 flex items-start space-x-3">
+                <div class="p-2 bg-sky-100 rounded-xl text-sky-600 shrink-0">
+                    <i class="fa-solid fa-mobile-screen-button"></i>
+                </div>
+                <div class="text-xs text-sky-900 leading-relaxed">
+                    <h3 class="font-bold mb-0.5">Agar Notifikasi & Getar Aktif Saat App Ditutup:</h3>
+                    <ol class="list-decimal list-inside space-y-1 text-sky-800">
+                        <li>Tekan menu titik tiga di browser HP Anda, lalu pilih <b>"Tambahkan ke Layar Utama" (Add to Home Screen)</b>.</li>
+                        <li>Pastikan mengetuk tombol <b>"Izinkan Notifikasi"</b> di menu pengaturan bawah agar HP memberikan izin pengingat latar belakang.</li>
+                    </ol>
+                </div>
+            </section>
+
+            <!-- Motivation / Daily Reminder Card -->
+            <section class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 rounded-2xl p-4 flex items-start space-x-3">
+                <div class="p-2 bg-amber-100 rounded-xl text-amber-600 shrink-0">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h3 class="text-xs font-bold text-amber-900">Catatan Disiplin</h3>
+                    <p class="text-xs text-amber-700/90 mt-0.5 leading-relaxed" id="quote-text">
+                        "Kedisiplinan adalah jembatan antara tujuan dan pencapaian. Jangan lupa mengisi presensi hari ini!"
+                    </p>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Footer -->
+        <footer class="bg-slate-50 border-t border-slate-100 p-4 text-center">
+            <p class="text-[11px] text-slate-400">IngatAbsen &copy; 2026 - Aplikasi Pendukung Presensi Anggota</p>
+        </footer>
+
+    </main>
+
+    <!-- App Logic Script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Elements Reference ---
+            const currentDateEl = document.getElementById('current-date');
+            const currentDayEl = document.getElementById('current-day');
+            const currentTimeEl = document.getElementById('current-time');
+            
+            const btnOpenPresensi = document.getElementById('btn-open-presensi');
+            const btnToggleLinkInput = document.getElementById('btn-toggle-link-input');
+            const linkInputContainer = document.getElementById('link-input-container');
+            const inputPresensiUrl = document.getElementById('input-presensi-url');
+            const btnSaveLink = document.getElementById('btn-save-link');
+            const currentLinkDisplay = document.getElementById('current-link-display');
+
+            const checkMasuk = document.getElementById('check-masuk');
+            const checkPulang = document.getElementById('check-pulang');
+            const badgeMasuk = document.getElementById('badge-masuk');
+            const badgePulang = document.getElementById('badge-pulang');
+
+            const btnToggleSettings = document.getElementById('btn-toggle-settings');
+            const settingsContainer = document.getElementById('settings-container');
+            const chevronSettings = document.getElementById('chevron-settings');
+            const timeMasukInput = document.getElementById('time-masuk');
+            const timePulangInput = document.getElementById('time-pulang');
+            const btnSaveSettings = document.getElementById('btn-save-settings');
+            const btnRequestNotif = document.getElementById('btn-request-notif');
+            const btnSoundTest = document.getElementById('btn-sound-test');
+            const btnInstallPwa = document.getElementById('btn-install-pwa');
+
+            const alarmBanner = document.getElementById('alarm-banner');
+            const alarmBannerTitle = document.getElementById('alarm-banner-title');
+            const alarmBannerDesc = document.getElementById('alarm-banner-desc');
+            const btnStopAlarmOnly = document.getElementById('btn-stop-alarm-only');
+
+            // --- PWA Deferred Prompt State ---
+            let deferredInstallPrompt = null;
+
+            // Tangkap event bawaan browser agar siap memicu popup instalasi langsung
+            window.addEventListener('beforeinstallprompt', (e) => {
+                // Mencegah banner otomatis mengganggu layar
+                e.preventDefault();
+                deferredInstallPrompt = e;
+                
+                // Pastikan tombol instal aktif
+                if (btnInstallPwa) {
+                    btnInstallPwa.classList.remove('opacity-50');
+                }
+            });
+
+            if (btnInstallPwa) {
+                btnInstallPwa.addEventListener('click', async () => {
+                    // Jika browser sudah menyiapkan prompt instalasi, langsung tampilkan popup!
+                    if (deferredInstallPrompt) {
+                        deferredInstallPrompt.prompt();
+                        const { outcome } = await deferredInstallPrompt.userChoice;
+                        if (outcome === 'accepted') {
+                            showToast('Aplikasi berhasil dipasang di layar utama!', 'success');
+                            btnInstallPwa.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-300"></i> <span>Terpasang</span>`;
+                        }
+                        deferredInstallPrompt = null;
+                    } else {
+                        // Jika dibuka di lingkungan preview/iframe atau iOS (Safari) yang tidak mendukung beforeinstallprompt
+                        // Jalankan alternatif langsung coba panggil navigator.install/prompt jika ada
+                        showToast('Popup instalasi dipicu oleh browser. Jika tidak muncul, aplikasi mungkin sudah terpasang atau buka via Chrome.', 'info');
+                    }
+                });
+            }
+
+            // Detect if already running as standalone PWA
+            if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+                if (btnInstallPwa) {
+                    btnInstallPwa.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-300"></i> <span>Terpasang</span>`;
+                    btnInstallPwa.classList.add('opacity-80');
+                }
+            }
+
+            // --- Alarm & Vibration Loop State ---
+            let vibrationInterval = null;
+            let soundInterval = null;
+            let isAlarmActive = false;
+
+            // --- State & Storage Defaults ---
+            let appData = {
+                linkUrl: 'https://kepegawaian.alirsyadpwt.sch.id/asweb/index.php',
+                masukChecked: false,
+                pulangChecked: false,
+                lastCheckedDate: '',
+                timeMasuk: '07:00',
+                timePulang: '15:00',
+                notifiedMasuk: false,
+                notifiedPulang: false
+            };
+
+            const quotes = [
+                '"Kedisiplinan adalah jembatan antara tujuan dan pencapaian."',
+                '"Kunci keberhasilan anggota adalah konsistensi dalam hal-hal kecil."',
+                '"Mengisi presensi tepat waktu menandakan komitmen dan integritas diri."',
+                '"Satu langkah kecil hari ini menentukan hasil besar di kemudian hari."'
+            ];
+
+            // Set random quote
+            document.getElementById('quote-text').innerText = quotes[Math.floor(Math.random() * quotes.length)];
+
+            // --- Load & Save Local Storage Data ---
+            function loadSettings() {
+                const saved = localStorage.getItem('ingat_absen_data');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        appData = { ...appData, ...parsed };
+                    } catch (e) {
+                        console.error('Failed to parse local storage data', e);
+                    }
+                }
+
+                // Auto-reset daily status when date changes
+                const todayStr = new Date().toDateString();
+                if (appData.lastCheckedDate !== todayStr) {
+                    appData.masukChecked = false;
+                    appData.pulangChecked = false;
+                    appData.notifiedMasuk = false;
+                    appData.notifiedPulang = false;
+                    appData.lastCheckedDate = todayStr;
+                    saveSettings();
+                }
+
+                // Sync UI elements
+                inputPresensiUrl.value = appData.linkUrl;
+                btnOpenPresensi.href = appData.linkUrl;
+                currentLinkDisplay.innerText = `Link: ${appData.linkUrl}`;
+                
+                checkMasuk.checked = appData.masukChecked;
+                checkPulang.checked = appData.pulangChecked;
+
+                timeMasukInput.value = appData.timeMasuk;
+                timePulangInput.value = appData.timePulang;
+
+                updateBadges();
+                updateNotifButtonState();
+            }
+
+            function saveSettings() {
+                localStorage.setItem('ingat_absen_data', JSON.stringify(appData));
+            }
+
+            // Cloudflare Web Push integration. App data itself remains on this device.
+            const PUSH_DEVICE_KEY = 'ingat_absen_device_id';
+            let pushSubscription = null;
+
+            function getPushDeviceId() {
+                let id = localStorage.getItem(PUSH_DEVICE_KEY);
+                if (!id) {
+                    id = crypto.randomUUID ? crypto.randomUUID() :
+                        'ia-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+                    localStorage.setItem(PUSH_DEVICE_KEY, id);
+                }
+                return id;
+            }
+
+            function localISODate() {
+                const d = new Date();
+                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            }
+
+            function base64UrlToUint8Array(value) {
+                const padding = '='.repeat((4 - value.length % 4) % 4);
+                const raw = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'));
+                return Uint8Array.from(raw, c => c.charCodeAt(0));
+            }
+
+            async function apiPost(path, payload) {
+                const response = await fetch(path, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.error || `Server error ${response.status}`);
+                return result;
+            }
+
+            async function syncPushSettingsToServer() {
+                if (!pushSubscription) return;
+                await apiPost('/api/settings', {
+                    deviceId: getPushDeviceId(),
+                    timeMasuk: appData.timeMasuk,
+                    timePulang: appData.timePulang,
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta'
+                });
+            }
+
+            async function syncCheckinToServer(type, checked) {
+                if (!pushSubscription || !navigator.onLine) return;
+                try {
+                    await apiPost('/api/checkin', {
+                        deviceId: getPushDeviceId(),
+                        type,
+                        checked,
+                        date: localISODate()
+                    });
+                } catch (error) {
+                    console.warn('Status presensi belum tersinkron:', error);
+                }
+            }
+
+            async function enablePushNotifications() {
+                if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+                    showToast('Browser ini belum mendukung Web Push. Gunakan browser terbaru.', 'warning');
+                    return;
+                }
+                if (!window.isSecureContext) {
+                    showToast('Notifikasi push membutuhkan HTTPS.', 'warning');
+                    return;
+                }
+
+                const permission = await Notification.requestPermission();
+                updateNotifButtonState();
+                if (permission !== 'granted') {
+                    showToast('Izin notifikasi belum diberikan. Periksa pengaturan browser.', 'warning');
+                    return;
+                }
+
+                try {
+                    const registration = await navigator.serviceWorker.ready;
+                    const configResponse = await fetch('/api/config');
+                    if (!configResponse.ok) throw new Error('Konfigurasi push belum tersedia.');
+                    const config = await configResponse.json();
+                    if (!config.publicKey) throw new Error('VAPID public key belum dipasang di Cloudflare.');
+
+                    pushSubscription = await registration.pushManager.getSubscription();
+                    if (!pushSubscription) {
+                        pushSubscription = await registration.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: base64UrlToUint8Array(config.publicKey)
+                        });
+                    }
+
+                    await apiPost('/api/subscribe', {
+                        deviceId: getPushDeviceId(),
+                        subscription: pushSubscription.toJSON(),
+                        timeMasuk: appData.timeMasuk,
+                        timePulang: appData.timePulang,
+                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta'
+                    });
+                    await syncCheckinToServer('masuk', appData.masukChecked);
+                    await syncCheckinToServer('pulang', appData.pulangChecked);
+
+                    updateNotifButtonState();
+                    await apiPost('/api/test', { deviceId: getPushDeviceId() });
+                    showToast('Push aktif! Notifikasi percobaan sudah dikirim.', 'success');
+                } catch (error) {
+                    console.error(error);
+                    showToast(`Gagal mengaktifkan push: ${error.message}`, 'warning');
+                }
+            }
+
+
+            // --- UI Helpers & Toast ---
+            function showToast(message, type = 'info') {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                
+                let bgClass = 'bg-slate-800 text-white';
+                let iconClass = 'fa-info-circle text-sky-400';
+                
+                if (type === 'success') {
+                    bgClass = 'bg-emerald-800 text-white';
+                    iconClass = 'fa-circle-check text-emerald-300';
+                } else if (type === 'warning') {
+                    bgClass = 'bg-amber-800 text-white';
+                    iconClass = 'fa-triangle-exclamation text-amber-300';
+                }
+
+                toast.className = `${bgClass} p-3.5 rounded-xl shadow-lg border border-white/10 text-xs flex items-center space-x-3 pointer-events-auto transition-all duration-300 transform translate-y-2 opacity-0`;
+                toast.innerHTML = `
+                    <i class="fa-solid ${iconClass} text-base shrink-0"></i>
+                    <span class="flex-1 font-medium">${message}</span>
+                `;
+
+                container.appendChild(toast);
+
+                // Animate In
+                setTimeout(() => {
+                    toast.classList.remove('translate-y-2', 'opacity-0');
+                }, 10);
+
+                // Remove Toast
+                setTimeout(() => {
+                    toast.classList.add('opacity-0', 'translate-y-2');
+                    setTimeout(() => {
+                        if (container.contains(toast)) {
+                            container.removeChild(toast);
+                        }
+                    }, 300);
+                }, 4000);
+            }
+
+            function updateBadges() {
+                if (appData.masukChecked) {
+                    badgeMasuk.innerText = 'Sudah';
+                    badgeMasuk.className = 'text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold';
+                } else {
+                    badgeMasuk.innerText = 'Belum';
+                    badgeMasuk.className = 'text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-medium';
+                }
+
+                if (appData.pulangChecked) {
+                    badgePulang.innerText = 'Sudah';
+                    badgePulang.className = 'text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold';
+                } else {
+                    badgePulang.innerText = 'Belum';
+                    badgePulang.className = 'text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-medium';
+                }
+            }
+
+            function updateNotifButtonState() {
+                if (!('Notification' in window) || !('PushManager' in window)) {
+                    btnRequestNotif.innerText = 'Tidak Didukung';
+                    btnRequestNotif.disabled = true;
+                    btnRequestNotif.className = 'text-xs px-3 py-1.5 bg-slate-100 text-slate-400 font-medium rounded-lg cursor-not-allowed';
+                    return;
+                }
+                if (Notification.permission === 'denied') {
+                    btnRequestNotif.innerText = 'Diblokir Browser';
+                    btnRequestNotif.disabled = false;
+                    btnRequestNotif.className = 'text-xs px-3 py-1.5 bg-rose-50 text-rose-600 font-semibold rounded-lg border border-rose-200';
+                } else if (Notification.permission === 'granted') {
+                    btnRequestNotif.innerText = 'Aktifkan / Perbarui Push';
+                    btnRequestNotif.disabled = false;
+                    btnRequestNotif.className = 'text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 font-semibold rounded-lg border border-emerald-200';
+                } else {
+                    btnRequestNotif.innerText = 'Izinkan Notifikasi';
+                    btnRequestNotif.disabled = false;
+                    btnRequestNotif.className = 'text-xs px-3 py-1.5 bg-brand-50 text-brand-600 hover:bg-brand-100 font-semibold rounded-lg border border-brand-200';
+                }
+            }
+
+            // --- Audio Synthesizer (Alarm Sound) ---
+            function playAlarmSound() {
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioContext) return;
+                    const ctx = new AudioContext();
+
+                    const now = ctx.currentTime;
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+
+                    osc.type = 'sine';
+                    // Beep sound pattern
+                    osc.frequency.setValueAtTime(587.33, now); // D5
+                    osc.frequency.setValueAtTime(880, now + 0.15); // A5
+
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                } catch (e) {
+                    console.log('Audio playback error', e);
+                }
+            }
+
+            // --- Vibration & Continuous Alarm Controller ---
+            function startContinuousAlarm(title, body) {
+                if (isAlarmActive) return;
+                isAlarmActive = true;
+
+                // 1. Tampilkan Visual Banner
+                alarmBannerTitle.innerText = title;
+                alarmBannerDesc.innerText = body;
+                alarmBanner.classList.remove('hidden');
+
+                // 2. Jalankan Audio Berulang (Tiap 1.5 detik)
+                playAlarmSound();
+                soundInterval = setInterval(() => {
+                    playAlarmSound();
+                }, 1500);
+
+                // 3. Jalankan Vibration API Berulang (Pola: Getar 1000ms, Diam 500ms)
+                if ("vibrate" in navigator) {
+                    try {
+                        navigator.vibrate([1000, 500]);
+                        vibrationInterval = setInterval(() => {
+                            navigator.vibrate([1000, 500]);
+                        }, 1500);
+                    } catch (err) {
+                        console.log("Vibration error/blocked:", err);
+                    }
+                }
+            }
+
+            function stopContinuousAlarm() {
+                if (!isAlarmActive) return;
+                isAlarmActive = false;
+
+                // Stop Audio Interval
+                if (soundInterval) {
+                    clearInterval(soundInterval);
+                    soundInterval = null;
+                }
+
+                // Stop Vibration Interval & Stop Immediate Vibration
+                if (vibrationInterval) {
+                    clearInterval(vibrationInterval);
+                    vibrationInterval = null;
+                }
+                if ("vibrate" in navigator) {
+                    navigator.vibrate(0); // Matikan getaran seketika
+                }
+
+                // Sembunyikan Visual Banner
+                alarmBanner.classList.add('hidden');
+                showToast('Alarm & getaran dimatikan.', 'info');
+            }
+
+            // --- Clock & Date Timer ---
+            function updateClock() {
+                const now = new Date();
+                
+                // Format Time
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                currentTimeEl.innerText = `${hours}:${minutes}:${seconds}`;
+
+                // Format Date
+                const optionsDay = { weekday: 'long' };
+                const optionsDate = { day: 'numeric', month: 'long', year: 'numeric' };
+                currentDayEl.innerText = now.toLocaleDateString('id-ID', optionsDay);
+                currentDateEl.innerText = now.toLocaleDateString('id-ID', optionsDate);
+
+                // Alarm Checker (HH:MM format)
+                const timeCurrentStr = `${hours}:${minutes}`;
+                checkAlarms(timeCurrentStr);
+            }
+
+            // --- Check Alarms Routine ---
+            function checkAlarms(currentTimeStr) {
+                // Check Masuk
+                if (currentTimeStr === appData.timeMasuk && !appData.notifiedMasuk && !appData.masukChecked) {
+                    triggerReminder("WAKTUNYA PRESENSI MASUK!", "Jangan lupa untuk mengisi presensi kehadiran awal Anda.");
+                    appData.notifiedMasuk = true;
+                    saveSettings();
+                }
+
+                // Check Pulang
+                if (currentTimeStr === appData.timePulang && !appData.notifiedPulang && !appData.pulangChecked) {
+                    triggerReminder("WAKTUNYA PRESENSI PULANG!", "Saatnya melakukan presensi kepulangan hari ini.");
+                    appData.notifiedPulang = true;
+                    saveSettings();
+                }
+            }
+
+            function triggerReminder(title, body) {
+                startContinuousAlarm(title, body);
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    navigator.serviceWorker.ready.then(registration => {
+                        registration.showNotification(title, {
+                            body,
+                            icon: '/icons/icon-192.png',
+                            badge: '/icons/icon-192.png',
+                            tag: `ingatabsen-${title.includes('MASUK') ? 'masuk' : 'pulang'}-${localISODate()}`,
+                            renotify: true,
+                            data: { url: '/' }
+                        });
+                    }).catch(err => console.warn('Gagal menampilkan notifikasi lokal:', err));
+                } else {
+                    showToast(`${title} - ${body}`, 'warning');
+                }
+            }
+
+            // --- UI Update Helpers ---
+<!-- ... existing code ... @@ updateBadges() & updateNotifButtonState() @@ ... -->
+            // --- Event Listeners ---
+
+            // Tombol Utama Buka Presensi -> Matikan alarm & getar, lalu buka tab presensi
+            btnOpenPresensi.addEventListener('click', (e) => {
+                stopContinuousAlarm();
+            });
+
+            // Tombol Khusus Matikan Alarm Saja
+            btnStopAlarmOnly.addEventListener('click', () => {
+                stopContinuousAlarm();
+            });
+
+            // Toggle Edit Link
+            btnToggleLinkInput.addEventListener('click', () => {
+                linkInputContainer.classList.toggle('hidden');
+            });
+
+            // Save Custom Link
+            btnSaveLink.addEventListener('click', () => {
+                let url = inputPresensiUrl.value.trim();
+                if (!url) return;
+
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = 'https://' + url;
+                }
+
+                appData.linkUrl = url;
+                btnOpenPresensi.href = url;
+                currentLinkDisplay.innerText = `Link: ${url}`;
+                saveSettings();
+                linkInputContainer.classList.add('hidden');
+                showToast('Link presensi berhasil disimpan!', 'success');
+            });
+
+            // Checkbox Events
+            checkMasuk.addEventListener('change', (e) => {
+                appData.masukChecked = e.target.checked;
+                updateBadges();
+                saveSettings();
+                syncCheckinToServer('masuk', e.target.checked);
+                if (e.target.checked) {
+                    showToast('Status Presensi Masuk diperbarui!', 'success');
+                    stopContinuousAlarm();
+                }
+            });
+
+            checkPulang.addEventListener('change', (e) => {
+                appData.pulangChecked = e.target.checked;
+                updateBadges();
+                saveSettings();
+                syncCheckinToServer('pulang', e.target.checked);
+                if (e.target.checked) {
+                    showToast('Status Presensi Pulang diperbarui!', 'success');
+                    stopContinuousAlarm();
+                }
+            });
+
+            // Settings Collapsible
+            btnToggleSettings.addEventListener('click', () => {
+                settingsContainer.classList.toggle('hidden');
+                chevronSettings.classList.toggle('rotate-180');
+            });
+
+            // Save Time Settings
+            btnSaveSettings.addEventListener('click', () => {
+                appData.timeMasuk = timeMasukInput.value;
+                appData.timePulang = timePulangInput.value;
+                // Reset notification triggers on new time setting
+                appData.notifiedMasuk = false;
+                appData.notifiedPulang = false;
+                saveSettings();
+                syncPushSettingsToServer()
+                    .then(() => showToast('Jam pengingat disimpan dan disinkronkan.', 'success'))
+                    .catch(() => showToast('Jam tersimpan di perangkat. Sinkronisasi push akan dicoba saat online.', 'info'));
+            });
+
+            // Enable Web Push for reminders when the PWA is closed (requires internet).
+            btnRequestNotif.addEventListener('click', () => enablePushNotifications());
+
+            // Sound & Vibration Test Button
+            btnSoundTest.addEventListener('click', () => {
+                if (isAlarmActive) {
+                    stopContinuousAlarm();
+                } else {
+                    startContinuousAlarm("TES ALARM & GETAR", "Menguji fitur nada dan getaran perangkat.");
+                    showToast('Menguji alarm & getaran (Klik "Buka Presensi" atau "Matikan Alarm" untuk menghentikan)', 'info');
+                }
+            });
+
+            // --- Initialization ---
+            loadSettings();
+            updateClock();
+            setInterval(updateClock, 1000);
+
+
+            // Root-scoped service worker required for real Web Push.
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(async (registration) => {
+                        window.ingatAbsenSwRegistration = registration;
+                        const existing = await registration.pushManager?.getSubscription();
+                        if (existing) {
+                            window.ingatAbsenPushSubscription = existing;
+                            pushSubscription = existing;
+                            syncPushSettingsToServer().catch(console.warn);
+                            syncCheckinToServer('masuk', appData.masukChecked).catch(console.warn);
+                            syncCheckinToServer('pulang', appData.pulangChecked).catch(console.warn);
+                        }
+                    })
+                    .catch(err => console.error('Service Worker registration failed:', err));
+            }
+        });
+    </script>
+</body>
+</html>

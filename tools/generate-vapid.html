@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Generator VAPID Lokal — IngatAbsen</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 18px;color:#172033;background:#f6f8fb}
+main{background:white;border:1px solid #dce3ec;border-radius:18px;padding:24px;box-shadow:0 8px 30px #1522380d}
+button{background:#0369a1;color:white;border:0;border-radius:10px;padding:12px 18px;font-weight:700;cursor:pointer}
+label{display:block;font-weight:700;margin:18px 0 6px}
+textarea{width:100%;min-height:78px;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:10px;font:13px ui-monospace,monospace}
+.note{background:#eff6ff;border-radius:10px;padding:12px;font-size:14px;line-height:1.5}
+.warn{color:#9a3412}
+</style>
+</head>
+<body>
+<main>
+<h1>Generator VAPID IngatAbsen</h1>
+<p>Halaman ini membuat pasangan kunci VAPID langsung di browser menggunakan Web Crypto. Tidak ada kunci yang dikirim ke server.</p>
+<p class="note warn"><b>Penting:</b> Simpan Private Key dengan aman. Jangan unggah file ini bersama hasil kunci ke GitHub, jangan kirim Private Key melalui chat, dan jangan membuat pasangan kunci baru setelah pengguna mulai berlangganan push.</p>
+<button id="generate">Buat pasangan kunci</button>
+<div id="result" hidden>
+<label>Public Key (boleh disimpan sebagai Worker variable)</label>
+<textarea id="pub" readonly></textarea>
+<label>Private Key (WAJIB disimpan sebagai Cloudflare Secret)</label>
+<textarea id="priv" readonly></textarea>
+<label>VAPID Subject (contoh)</label>
+<textarea id="subject">mailto:alamat-email-kamu@example.com</textarea>
+<button id="download">Unduh file JSON</button>
+</div>
+<p id="status" role="status"></p>
+</main>
+<script>
+const b64url = bytes => {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+};
+const fromB64url = value => {
+  const padded = value.replace(/-/g,'+').replace(/_/g,'/') + '='.repeat((4 - value.length % 4) % 4);
+  return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+};
+document.getElementById('generate').addEventListener('click', async () => {
+  const status = document.getElementById('status');
+  try {
+    if (!crypto?.subtle) throw new Error('Web Crypto tidak tersedia. Buka file ini dengan browser modern.');
+    const pair = await crypto.subtle.generateKey(
+      {name:'ECDSA', namedCurve:'P-256'}, true, ['sign','verify']
+    );
+    const jwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
+    const x = fromB64url(jwk.x);
+    const y = fromB64url(jwk.y);
+    const d = fromB64url(jwk.d);
+    const rawPublic = new Uint8Array(1 + x.length + y.length);
+    rawPublic[0] = 4; rawPublic.set(x,1); rawPublic.set(y,1+x.length);
+    document.getElementById('pub').value = b64url(rawPublic);
+    document.getElementById('priv').value = b64url(d);
+    document.getElementById('result').hidden = false;
+    status.textContent = 'Kunci berhasil dibuat di perangkat ini.';
+  } catch (e) {
+    status.textContent = 'Gagal membuat kunci: ' + e.message;
+  }
+});
+document.getElementById('download').addEventListener('click', () => {
+  const data = {
+    VAPID_PUBLIC_KEY: document.getElementById('pub').value,
+    VAPID_PRIVATE_KEY: document.getElementById('priv').value,
+    VAPID_SUBJECT: document.getElementById('subject').value
+  };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ingatabsen-vapid-keys-KEEP-PRIVATE.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+</script>
+</body>
+</html>
